@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Расчет ЗП</title>
+    <style>
+        :root {
+            --bg-color: #121212; --card-bg: #1e1e1e; --text-main: #e0e0e0;
+            --text-muted: #9e9e9e; --accent: #3b82f6; --accent-red: #ff5252;
+            --border: #333333; --radius: 10px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background-color: var(--bg-color); color: var(--text-main); height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* Статус-бар отладки */
+        #debug-status { text-align: center; font-size: 11px; padding: 4px; font-weight: bold; background: #000; color: #ff5252; z-index: 9999; }
+
+        /* Вкладки CSS */
+        .tab-radio { position: absolute; opacity: 0; pointer-events: none; }
+        header { display: flex; background-color: var(--card-bg); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+        .tab-btn { flex: 1; padding: 0.85rem 0; text-align: center; color: var(--text-muted); font-size: 0.95rem; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; }
+        #radio-calc:checked ~ header .tab-btn-calc, #radio-stats:checked ~ header .tab-btn-stats, #radio-settings:checked ~ header .tab-btn-settings { color: var(--accent); border-bottom: 2px solid var(--accent); }
+        .tab-content { display: none; flex: 1; flex-direction: column; padding: 0.5rem; gap: 0.5rem; overflow-y: auto; }
+        #radio-calc:checked ~ #calc-tab { display: flex; }
+        #radio-stats:checked ~ #stats-tab { display: flex; }
+        #radio-settings:checked ~ #settings-tab { display: flex; }
+
+        /* Элементы дизайна */
+        .card { background-color: var(--card-bg); border-radius: var(--radius); padding: 0.6rem 0.8rem; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border); flex-shrink: 0; min-height: 52px; }
+        .card.column { flex-direction: column; align-items: stretch; gap: 0.4rem; }
+        .label { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.15rem; }
+        .hint { font-size: 0.75rem; font-weight: bold; margin-left: 5px; }
+        .result-val { font-size: 1.1rem; font-weight: 700; color: var(--accent-red); white-space: nowrap; }
+        .total-val { font-size: 1.25rem; color: var(--accent); }
+        .payout-val { font-size: 1.5rem; font-weight: 800; color: #4caf50; text-align: center; width: 100%; }
+        input[type="number"], select { background-color: var(--bg-color); border: 1px solid var(--border); color: var(--text-main); padding: 0.4rem 0.5rem; border-radius: 8px; font-size: 1rem; width: 100px; text-align: center; outline: none; height: 36px; }
+        select { width: 100%; text-align: left; appearance: none; }
+        .input-group { display: flex; flex-direction: column; justify-content: center; }
+        .flex-row { display: flex; justify-content: space-between; align-items: center; }
+        .full-width { width: 100% !important; text-align: left !important; }
+        
+        .action-bar { display: flex; gap: 0.5rem; margin-top: 0.2rem; flex-shrink: 0; }
+        .btn-action { flex: 1; background-color: var(--card-bg); border: 1px solid var(--border); color: var(--text-main); padding: 0.7rem 0.2rem; border-radius: var(--radius); font-size: 0.85rem; font-weight: 600; cursor: pointer; text-align: center; }
+        .btn-action.primary { background-color: rgba(59, 130, 246, 0.1); color: var(--accent); border-color: var(--accent); }
+        .btn-clear { background-color: rgba(255, 82, 82, 0.1); color: var(--accent-red); border: 1px solid var(--accent-red); padding: 0.8rem; border-radius: var(--radius); font-size: 0.95rem; font-weight: 600; cursor: pointer; margin-top: 0.5rem; width: 100%; }
+        
+        .stat-item { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); }
+        
+        body.read-only header, body.read-only .action-bar, body.read-only #debug-status { display: none !important; }
+        body.read-only .card { border-color: transparent; background-color: transparent; border-bottom: 1px dashed var(--border); border-radius: 0; padding: 0.5rem 0; }
+        body.read-only input[type="number"], body.read-only select { border: none; background: transparent; text-align: right; padding: 0; color: var(--accent); font-weight: bold; pointer-events: none; appearance: none; }
+        body.read-only select { text-align: left; }
+    </style>
+</head>
+<body>
+
+    <div id="debug-status">ОЖИДАНИЕ ЗАГРУЗКИ JS... (Если красное - браузер блокирует код!)</div>
+
+    <input type="radio" name="main-tab" id="radio-calc" class="tab-radio" checked>
+    <input type="radio" name="main-tab" id="radio-stats" class="tab-radio">
+    <input type="radio" name="main-tab" id="radio-settings" class="tab-radio">
+
+    <header>
+        <label for="radio-calc" class="tab-btn tab-btn-calc">Расчет</label>
+        <label for="radio-stats" class="tab-btn tab-btn-stats" onclick="if(window.renderHist) window.renderHist();">Журнал</label>
+        <label for="radio-settings" class="tab-btn tab-btn-settings">Настройки</label>
+    </header>
+
+    <div id="calc-tab" class="tab-content">
+        <div class="card column">
+            <div class="input-group full-width">
+                <span class="label">Расчетный период</span>
+                <select id="i-month" class="full-width" onchange="calcAll()">
+                    <option value="Январь">Январь</option><option value="Февраль">Февраль</option>
+                    <option value="Март">Март</option><option value="Апрель">Апрель</option>
+                    <option value="Май">Май</option><option value="Июнь">Июнь</option>
+                    <option value="Июль">Июль</option><option value="Август">Август</option>
+                    <option value="Сентябрь">Сентябрь</option><option value="Октябрь">Октябрь</option>
+                    <option value="Ноябрь">Ноябрь</option><option value="Декабрь">Декабрь</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="input-group">
+                <span class="label">Смены <span id="hint-shift" class="hint"></span></span>
+                <input type="number" id="i-shifts" min="0" placeholder="0" oninput="calcAll()" onkeyup="calcAll()">
+            </div>
+            <span class="result-val" id="out-shifts">0 руб.</span>
+        </div>
+
+        <div class="card">
+            <div class="input-group">
+                <span class="label">Накат (ч) <span id="hint-roll" class="hint"></span></span>
+                <input type="number" id="i-roll" min="0" placeholder="0" oninput="calcAll()" onkeyup="calcAll()">
+            </div>
+            <span class="result-val" id="out-roll">0 руб.</span>
+        </div>
+
+        <div class="card">
+            <div class="input-group">
+                <span class="label">Сушка (ч) <span id="hint-dry" class="hint"></span></span>
+                <input type="number" id="i-dry" min="0" placeholder="0" oninput="calcAll()" onkeyup="calcAll()">
+            </div>
+            <span class="result-val" id="out-dry">0 руб.</span>
+        </div>
+
+        <div class="card">
+            <span class="label" style="font-size: 0.95rem; font-weight: bold; color: var(--text-main);">ИТОГО:</span>
+            <span class="result-val total-val" id="out-total">0 руб.</span>
+        </div>
+
+        <div class="card">
+            <div class="input-group">
+                <span class="label">Аванс (руб.)</span>
+            </div>
+            <input type="number" id="i-advance" min="0" placeholder="0" style="width: 100px;" oninput="calcAll()" onkeyup="calcAll()">
+        </div>
+
+        <div class="card column" style="background-color: rgba(76, 175, 80, 0.1); border-color: rgba(76, 175, 80, 0.3);">
+            <span class="label" style="text-align: center; color: var(--text-main); font-weight: 600;">К ВЫДАЧЕ:</span>
+            <span class="payout-val" id="out-payout">0 руб.</span>
+        </div>
+
+        <button type="button" class="btn-clear" style="margin-top:0; border-color:var(--accent); color:var(--accent); background:rgba(59,130,246,0.1);" onclick="calcAll()">🔄 ПРИНУДИТЕЛЬНЫЙ РАСЧЕТ</button>
+
+        <div class="action-bar">
+            <button type="button" class="btn-action" onclick="document.body.classList.toggle('read-only');">📸 Скрин</button>
+            <button type="button" class="btn-action primary" onclick="if(window.saveHist) window.saveHist();">💾 Сохранить</button>
+        </div>
+    </div>
+
+    <div id="stats-tab" class="tab-content">
+        <h3 style="padding: 0.5rem; font-size: 1.1rem;">История выплат</h3>
+        <div id="stats-list" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+        <button type="button" class="btn-clear" onclick="if(window.clearHist) window.clearHist();" style="margin-top: auto;">🗑 Очистить историю</button>
+    </div>
+
+    <div id="settings-tab" class="tab-content">
+        <div class="card column">
+            <div class="flex-row full-width">
+                <span class="label">Ставка за смену</span>
+                <input type="number" id="s-shift-rate" min="0" placeholder="0" oninput="calcAll()" onkeyup="calcAll()">
+            </div>
+        </div>
+        <div class="card column">
+            <div class="flex-row full-width">
+                <span class="label">Ставка за накат</span>
+                <input type="number" id="s-roll-rate" min="0" placeholder="0" oninput="calcAll()" onkeyup="calcAll()">
+            </div>
+        </div>
+        <div class="card column">
+            <div class="flex-row full-width">
+                <span class="label">Ставка за сушку</span>
+                <input type="number" id="s-dry-rate" min="0" placeholder="0" oninput="calcAll()" onkeyup="calcAll()">
+            </div>
+        </div>
+        <button type="button" class="btn-clear" onclick="if(window.clearCalc) window.clearCalc();">Очистить смены (ставки останутся)</button>
+    </div>
+
+    <script>
+        // Глобальная функция расчета (доступна отовсюду)
+        window.calcAll = function() {
+            try {
+                // Функция безопасного получения числа из поля
+                var val = function(id) {
+                    var element = document.getElementById(id);
+                    if (!element || !element.value) return 0;
+                    var num = parseFloat(element.value);
+                    return isNaN(num) ? 0 : num;
+                };
+
+                // Читаем смены и часы
+                var s = val('i-shifts');
+                var r = val('i-roll');
+                var d = val('i-dry');
+                var a = val('i-advance');
+
+                // Читаем ставки из настроек
+                var rs = val('s-shift-rate');
+                var rr = val('s-roll-rate');
+                var rd = val('s-dry-rate');
+
+                // Умножаем по формуле
+                var sumS = s * rs;
+                var sumR = r * rr;
+                var sumD = d * rd;
+                var total = sumS + sumR + sumD;
+                var payout = total - a;
+
+                // Форматируем для вывода
+                var fmt = function(n) { return Math.round(n) + " руб."; };
+
+                // Записываем суммы в HTML
+                document.getElementById('out-shifts').innerText = fmt(sumS);
+                document.getElementById('out-roll').innerText = fmt(sumR);
+                document.getElementById('out-dry').innerText = fmt(sumD);
+                document.getElementById('out-total').innerText = fmt(total);
+                document.getElementById('out-payout').innerText = fmt(payout);
+
+                // Отрисовываем подсказки по ставкам на главном экране
+                var hS = document.getElementById('hint-shift');
+                var hR = document.getElementById('hint-roll');
+                var hD = document.getElementById('hint-dry');
+                
+                if (hS) { hS.innerText = rs > 0 ? "(ставка: " + rs + ")" : "(НЕТ СТАВКИ!)"; hS.style.color = rs > 0 ? "#4caf50" : "#ff5252"; }
+                if (hR) { hR.innerText = rr > 0 ? "(ставка: " + rr + ")" : "(НЕТ СТАВКИ!)"; hR.style.color = rr > 0 ? "#4caf50" : "#ff5252"; }
+                if (hD) { hD.innerText = rd > 0 ? "(ставка: " + rd + ")" : "(НЕТ СТАВКИ!)"; hD.style.color = rd > 0 ? "#4caf50" : "#ff5252"; }
+
+                // Безопасное сохранение в память браузера (чтобы не слетало при переходе по вкладкам)
+                try {
+                    var store = window['localStorage'];
+                    if (store) {
+                        store.setItem('z_mon', document.getElementById('i-month').value || 'Январь');
+                        store.setItem('z_s', document.getElementById('i-shifts').value || '');
+                        store.setItem('z_r', document.getElementById('i-roll').value || '');
+                        store.setItem('z_d', document.getElementById('i-dry').value || '');
+                        store.setItem('z_a', document.getElementById('i-advance').value || '');
+                        store.setItem('z_rs', document.getElementById('s-shift-rate').value || '');
+                        store.setItem('z_rr', document.getElementById('s-roll-rate').value || '');
+                        store.setItem('z_rd', document.getElementById('s-dry-rate').value || '');
+                    }
+                } catch(e) {}
+            } catch(error) {
+                document.getElementById('debug-status').innerText = 'Ошибка расчета: ' + error.message;
+            }
+        };
+
+        // Запуск при открытии страницы
+        window.onload = function() {
+            var status = document.getElementById('debug-status');
+            status.innerText = 'JS РАБОТАЕТ ✓';
+            status.style.color = '#4caf50';
+            
+            // Восстановление данных
+            try {
+                var store = window['localStorage'];
+                if (store && store.getItem('z_mon')) {
+                    var setv = function(id, key) { var v = store.getItem(key); if(v !== null && document.getElementById(id)) document.getElementById(id).value = v; };
+                    setv('i-month', 'z_mon');
+                    setv('i-shifts', 'z_s');
+                    setv('i-roll', 'z_r');
+                    setv('i-dry', 'z_d');
+                    setv('i-advance', 'z_a');
+                    setv('s-shift-rate', 'z_rs');
+                    setv('s-roll-rate', 'z_rr');
+                    setv('s-dry-rate', 'z_rd');
+                }
+            } catch(e) {}
+
+            // Первичный расчет
+            window.calcAll();
+        };
+
+        // Логика журнала
+        window.saveHist = function() {
+            try {
+                var m = document.getElementById('i-month').value;
+                var tot = document.getElementById('out-total').innerText;
+                var pay = document.getElementById('out-payout').innerText;
+                var hist = [];
+                try { var raw = window['localStorage'].getItem('z_hist'); if (raw) hist = JSON.parse(raw); } catch(e){}
+                
+                var idx = -1;
+                for (var i = 0; i < hist.length; i++) { if (hist[i].month === m) idx = i; }
+                if (idx !== -1) {
+                    if (confirm('Обновить данные за ' + m + '?')) hist[idx] = { month: m, total: tot, payout: pay };
+                    else return;
+                } else {
+                    hist.push({ month: m, total: tot, payout: pay });
+                }
+                
+                window['localStorage'].setItem('z_hist', JSON.stringify(hist));
+                window.renderHist();
+                alert('Сохранено: ' + m);
+            } catch(e) { alert('Не удалось сохранить'); }
+        };
+
+        window.renderHist = function() {
+            var cont = document.getElementById('stats-list');
+            if(!cont) return;
+            cont.innerHTML = '';
+            var hist = [];
+            try { var raw = window['localStorage'].getItem('z_hist'); if (raw) hist = JSON.parse(raw); } catch(e){}
+            if(hist.length === 0) { cont.innerHTML = '<div style="text-align:center;">Пусто</div>'; return; }
+            for(var i = 0; i < hist.length; i++) {
+                cont.innerHTML += '<div class="stat-item"><span class="stat-month">' + hist[i].month + '</span><div style="text-align: right;"><div class="stat-sum">' + hist[i].payout + '</div><div style="font-size: 0.8rem; color: var(--text-muted);">Итого: ' + hist[i].total + '</div></div></div>';
+            }
+        };
+
+        window.clearHist = function() {
+            if(confirm('Удалить журнал?')) {
+                try { window['localStorage'].removeItem('z_hist'); } catch(e){}
+                window.renderHist();
+            }
+        };
+
+        window.clearCalc = function() {
+            if(confirm('Очистить смены? Ставки останутся.')) {
+                document.getElementById('i-shifts').value = '';
+                document.getElementById('i-roll').value = '';
+                document.getElementById('i-dry').value = '';
+                document.getElementById('i-advance').value = '';
+                window.calcAll();
+                document.getElementById('radio-calc').checked = true;
+            }
+        };
+    </script>
+</body>
+</html>
+
